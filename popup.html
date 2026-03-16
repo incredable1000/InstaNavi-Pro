@@ -1,0 +1,103 @@
+<!-- popup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Settings</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 15px;
+      width: 220px;
+    }
+    h2 {
+      margin-top: 0;
+      font-size: 18px;
+    }
+    .input-group {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .input-group button {
+      padding: 5px;
+      font-size: 18px;
+      width: 35px;
+      height: 35px;
+      cursor: pointer;
+      border: none;
+      background-color: #007bff;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .input-group input[type="number"] {
+      width: 60px;
+      text-align: center;
+      font-size: 16px;
+      padding: 5px;
+      margin: 0;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      -moz-appearance: textfield; /* Hides spinner on Firefox */
+    }
+    /* Hides spinner on Chrome, Safari, Edge, Opera */
+    .input-group input[type="number"]::-webkit-outer-spin-button,
+    .input-group input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .success-message {
+      color: green;
+      font-size: 0.9em;
+      display: none;
+      text-align: center;
+    }
+    #scrollToTopButton {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        padding: 10px 15px; /* Padding for top/bottom and left/right */
+        background-color: #0095f6; /* Instagram brand color */
+        color: #ffffff; /* Text color */
+        border: none; /* No border */
+        border-radius: 25px; /* Rounded corners */
+        cursor: pointer; /* Pointer cursor on hover */
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); /* Shadow for depth */
+        font-size: 16px; /* Font size */
+        transition: background-color 0.3s ease; /* Smooth transition for background color */
+    }
+
+    /* Hover effect */
+    #scrollToTopButton:hover {
+        background-color: #007bb5; /* Darker shade on hover */
+    }
+
+    /* Active effect */
+    #scrollToTopButton:active {
+        transform: scale(0.95); /* Slightly smaller when clicked */
+    }
+  </style>
+</head>
+<body>
+  <h2>Scroll Delay Settings</h2>
+  <div class="input-group">
+    <button id="decreaseButton">-</button>
+    <input type="number" id="scrollTimer" min="1" step="1">
+    <button id="increaseButton">+</button>
+  </div>
+
+    <!-- Visibility Toggle for Buttons -->
+    <div class="input-group">
+        <input type="checkbox" id="showButtons" />
+        <label for="showButtons">Show navigation buttons</label>
+    </div>
+
+  <div id="successMessage" class="success-message">Settings saved!</div>
+  <script src="popup.js"></script>
+</body>
+</html>
