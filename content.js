@@ -10,8 +10,7 @@ const CONSTANTS = {
     LOAD_DELAY: 3000
   },
   VIDEO: {
-    SEEK_SECONDS: 3,
-    TIMEOUT: 5000
+    SEEK_SECONDS: 3
   },
   UI: {
     BUTTON_COLOR: '#0095f6',
@@ -28,19 +27,28 @@ let scrollTimerId;
 let isFullscreen = false;
 let currentGalleryIndex = 0;
 let observer = null;
+let cleanupImageZoom = null;
+let handleScroll = null;
+let handleKeydown = null;
 
 // Add fullscreenchange event listener to handle Escape key
-document.addEventListener('fullscreenchange', function() {
+const handleFullscreenChange = () => {
   isFullscreen = !!document.fullscreenElement;
-  
+
   // Clean up fullscreen container when exiting fullscreen
   if (!isFullscreen) {
+    if (cleanupImageZoom) {
+      cleanupImageZoom();
+      cleanupImageZoom = null;
+    }
     const container = document.getElementById('fullscreen-container');
     if (container) {
       container.remove();
     }
   }
-});
+};
+
+document.addEventListener('fullscreenchange', handleFullscreenChange);
 
 // Create a container for the buttons
 const buttonContainer = document.createElement("div");
@@ -194,7 +202,7 @@ function scrollToElement(post) {
 
   window.scrollTo({
     top: postTop - 10, // Scroll to the top of the post (with a small offset for margin)
-    behavior: "instant",
+    behavior: "auto",
   });
 }
 
@@ -306,6 +314,10 @@ async function navigateGalleryFullscreen(direction) {
   try {
     // Handle video
     if (currentElement.tagName.toLowerCase() === 'video') {
+      if (cleanupImageZoom) {
+        cleanupImageZoom();
+        cleanupImageZoom = null;
+      }
       const fullscreenVideo = await setupFullscreenVideo(currentElement, fullscreenContainer);
       if (fullscreenVideo) {
         // Try to play the video
@@ -342,7 +354,7 @@ async function navigateGalleryFullscreen(direction) {
         }
       };
       fullscreenImage.onload = () => {
-        setupImageZoom(fullscreenImage); // Setup zoom after image loads
+        applyImageZoom(fullscreenImage); // Setup zoom after image loads
       };
       fullscreenImage.src = imageUrl;
 
@@ -537,6 +549,10 @@ function setupImageZoom(fullscreenImage) {
     document.body.style.userSelect = '';
   };
 
+  const handleNativeDragStart = (event) => {
+    event.preventDefault();
+  };
+
   // Set initial styles
   Object.assign(fullscreenImage.style, {
     transformOrigin: '0 0',
@@ -551,7 +567,7 @@ function setupImageZoom(fullscreenImage) {
   window.addEventListener('mousemove', handleDragMove, { passive: false });
   window.addEventListener('mouseup', handleDragEnd);
   window.addEventListener('mouseleave', handleDragEnd);
-  fullscreenImage.addEventListener('dragstart', e => e.preventDefault());
+  fullscreenImage.addEventListener('dragstart', handleNativeDragStart);
   fullscreenImage.addEventListener('dblclick', resetImagePosition);
 
   // Return cleanup function
@@ -565,11 +581,19 @@ function setupImageZoom(fullscreenImage) {
     window.removeEventListener('mousemove', handleDragMove);
     window.removeEventListener('mouseup', handleDragEnd);
     window.removeEventListener('mouseleave', handleDragEnd);
-    fullscreenImage.removeEventListener('dragstart', e => e.preventDefault());
+    fullscreenImage.removeEventListener('dragstart', handleNativeDragStart);
     fullscreenImage.removeEventListener('dblclick', resetImagePosition);
     
     document.body.style.userSelect = '';
   };
+}
+
+function applyImageZoom(fullscreenImage) {
+  if (cleanupImageZoom) {
+    cleanupImageZoom();
+    cleanupImageZoom = null;
+  }
+  cleanupImageZoom = setupImageZoom(fullscreenImage);
 }
 
 // Function to try playing video with fallbacks
@@ -665,74 +689,38 @@ function tryPlayVideo(video, container) {
   });
 }
 
-// Function to seek the video 2 seconds forward or backward (renamed to avoid conflict)
-function seekVideoNonFullscreen(direction) {
-  try {
-    // Get the video element based on fullscreen state
-    let video;
-    
-    if (document.fullscreenElement?.tagName === 'VIDEO') {
-      video = document.fullscreenElement;
-    } else if (isFullscreen) {
-      const container = document.getElementById('fullscreen-container');
-      video = container?.querySelector('video');
-    } else {
-      const currentVisiblePost = document.querySelector("article.visible");
-      video = currentVisiblePost?.querySelector("video");
-    }
-    
-    if (!video) return;
-
-    const seekAmount = CONSTANTS.VIDEO.SEEK_SECONDS;
-    const currentTime = video.currentTime;
-    const duration = video.duration;
-    
-    // Calculate new time with bounds checking
-    const newTime = direction === "forward"
-      ? Math.min(currentTime + seekAmount, isFinite(duration) ? duration : currentTime + seekAmount)
-      : Math.max(0, currentTime - seekAmount);
-
-    // Store playback state
-    const wasPlaying = !video.paused;
-    
-    try {
-      // Set the new time
-      video.currentTime = newTime;
-      
-      // Resume playback if it was playing
-      if (wasPlaying) {
-        const playPromise = video.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(() => {
-            // If play fails, try again after a short delay
-            setTimeout(() => {
-              video.play().catch(console.warn);
-            }, 100);
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('Error seeking video:', err);
-      // Fallback: reload video and set time
-      const currentSrc = video.src || video.currentSrc;
-      if (currentSrc) {
-        video.src = currentSrc;
-        video.currentTime = newTime;
-        if (wasPlaying) {
-          video.play().catch(console.warn);
-        }
-      }
-    }
-  } catch (error) {
-    console.warn('Error in seekVideo:', error);
-  }
-}
-
 // Improved posts query with cleanup
 function updatePosts() {
-  const newPosts = document.querySelectorAll("article");
-  if (newPosts.length !== posts.length) {
-    posts = newPosts;
+  posts = document.querySelectorAll("article");
+  updateVisiblePost();
+}
+
+function updateVisiblePost() {
+  if (!posts || posts.length === 0) return;
+
+  const viewportCenter = window.innerHeight / 2;
+  let bestPost = null;
+  let minDistance = Infinity;
+
+  posts.forEach((post) => {
+    const rect = post.getBoundingClientRect();
+    if (rect.height === 0) return;
+
+    const postCenter = rect.top + (rect.height / 2);
+    const distance = Math.abs(postCenter - viewportCenter);
+
+    if (distance < minDistance) {
+      minDistance = distance;
+      bestPost = post;
+    }
+  });
+
+  if (bestPost && bestPost !== currentVisiblePost) {
+    if (currentVisiblePost) {
+      currentVisiblePost.classList.remove("visible");
+    }
+    bestPost.classList.add("visible");
+    currentVisiblePost = bestPost;
   }
 }
 
@@ -747,6 +735,16 @@ function debounce(func, wait) {
     clearTimeout(timeout);
     timeout = setTimeout(later, wait);
   };
+}
+
+function setupScrollTracking() {
+  if (handleScroll) return;
+
+  handleScroll = debounce(() => {
+    updateVisiblePost();
+  }, 100);
+
+  window.addEventListener('scroll', handleScroll, { passive: true });
 }
 
 // Improved video seeking with error boundaries
@@ -855,12 +853,40 @@ function cleanup() {
   if (scrollTimerId) {
     clearInterval(scrollTimerId);
   }
+
+  if (handleScroll) {
+    window.removeEventListener('scroll', handleScroll);
+    handleScroll = null;
+  }
+
+  if (handleKeydown) {
+    document.removeEventListener('keydown', handleKeydown);
+    handleKeydown = null;
+  }
+
+  document.removeEventListener('fullscreenchange', handleFullscreenChange);
+
+  if (cleanupImageZoom) {
+    cleanupImageZoom();
+    cleanupImageZoom = null;
+  }
   
   Object.entries(scrollToTopEvents).forEach(([event, handler]) => {
     scrollToTopButton.removeEventListener(event, handler);
   });
   
   scrollToTopButton.remove();
+}
+
+function isEditableTarget(target) {
+  if (!target) return false;
+  const tagName = target.tagName?.toLowerCase();
+  return (
+    target.isContentEditable ||
+    tagName === 'input' ||
+    tagName === 'textarea' ||
+    tagName === 'select'
+  );
 }
 
 // Improved keyboard event handling with better performance
@@ -917,10 +943,6 @@ const keyboardShortcuts = {
       seekVideo("backward"); // Use the improved seekVideo for non-fullscreen
     }
   },
-  'Enter': async (event) => {
-    event.preventDefault();
-    await toggleMediaFullscreen(event);
-  },
   'Shift': (event) => {
     event.preventDefault();
     if (!isFullscreen) {
@@ -930,17 +952,27 @@ const keyboardShortcuts = {
 };
 
 // Add keyboard event listener with improved handling
-document.addEventListener("keydown", (event) => {
+handleKeydown = async (event) => {
+  if (isEditableTarget(event.target)) return;
+
+  if (event.key === 'Enter') {
+    await handleEnterKey(event);
+    return;
+  }
+
   const handler = keyboardShortcuts[event.key];
   if (handler) {
     handler(event);
   }
-});
+};
+
+document.addEventListener("keydown", handleKeydown);
 
 // Improved Chrome storage handling with error boundaries
 const storageHandlers = {
   scrollTimer: (value) => {
-    scrollInterval = value;
+    const normalized = Math.max(1, Number(value) || CONSTANTS.SCROLL.INTERVAL);
+    scrollInterval = normalized;
     autoScroll();
   },
   showButtons: (value) => {
@@ -966,8 +998,8 @@ chrome.storage.onChanged.addListener((changes) => {
 async function loadInitialSettings() {
   try {
     const data = await chrome.storage.local.get(['scrollTimer', 'showButtons']);
-    if (data.scrollTimer) {
-      scrollInterval = data.scrollTimer;
+    if (typeof data.scrollTimer !== 'undefined') {
+      scrollInterval = Math.max(1, Number(data.scrollTimer) || CONSTANTS.SCROLL.INTERVAL);
     }
     toggleButtonsVisibility(data.showButtons !== false);
   } catch (error) {
@@ -986,6 +1018,7 @@ async function initializeExtension() {
     
     // Initialize the page by ensuring posts are loaded
     ensurePostsLoaded();
+    setupScrollTracking();
 
     // Setup observers
     observer = new MutationObserver(debounce(updatePosts, 100));
@@ -1012,8 +1045,8 @@ async function initializeExtension() {
 // Start initialization
 initializeExtension();
 
-// Cleanup on extension unload
-chrome.runtime.onSuspend?.addListener(() => {
+// Cleanup on page unload
+window.addEventListener('pagehide', () => {
   try {
     cleanup();
   } catch (error) {
@@ -1044,7 +1077,7 @@ function openProfileInNewTab() {
 // Ensure the posts are loaded before attempting to interact
 function ensurePostsLoaded() {
   setTimeout(() => {
-    posts = document.querySelectorAll("article"); // Re-fetch posts after waiting
+    updatePosts(); // Re-fetch posts after waiting
     startFirstVisiblePost(); // Make sure to start with the first post as visible
   }, CONSTANTS.SCROLL.LOAD_DELAY); // Wait for 3 seconds to ensure page content is fully loaded
 }
@@ -1052,20 +1085,13 @@ function ensurePostsLoaded() {
 // Start by setting the first post as visible
 function startFirstVisiblePost() {
   if (posts && posts.length > 0) {
-    posts[0].classList.add("visible");
-    currentVisiblePost = posts[0];
+    updateVisiblePost();
+    if (!currentVisiblePost) {
+      posts[0].classList.add("visible");
+      currentVisiblePost = posts[0];
+    }
   }
 }
-
-// MutationObserver to detect dynamically loaded posts (Instagram often loads posts dynamically)
-observer = new MutationObserver(() => {
-  posts = document.querySelectorAll("article"); // Re-fetch the posts when new posts are added to the page
-});
-
-observer.observe(document.body, {
-  childList: true,
-  subtree: true,
-});
 
 // Function to check if we're on a post page
 function isPostPage() {
@@ -1091,12 +1117,7 @@ function getPostPageMedia() {
   return null;
 }
 
-// Handle keydown events for the entire page
-document.addEventListener('keydown', async (event) => {
-  // Only handle Enter key
-  if (event.key !== 'Enter') return;
-
-  // Check if we're on a post page
+async function handleEnterKey(event) {
   if (isPostPage()) {
     const mediaElement = getPostPageMedia();
     if (!mediaElement) return;
@@ -1168,7 +1189,7 @@ document.addEventListener('keydown', async (event) => {
           }
         };
         fullscreenImage.onload = () => {
-          setupImageZoom(fullscreenImage);
+          applyImageZoom(fullscreenImage);
         };
         fullscreenImage.src = imageUrl;
 
@@ -1181,9 +1202,10 @@ document.addEventListener('keydown', async (event) => {
     }
   } else {
     // Handle feed page media using existing toggleMediaFullscreen
-    toggleMediaFullscreen(event);
+    event.preventDefault();
+    await toggleMediaFullscreen(event);
   }
-});
+}
 
 // Function to handle the full-screen toggle for media (video or image)
 async function toggleMediaFullscreen(event) {
@@ -1282,7 +1304,7 @@ async function toggleMediaFullscreen(event) {
         }
       };
       fullscreenImage.onload = () => {
-        setupImageZoom(fullscreenImage); // Setup zoom after image loads
+        applyImageZoom(fullscreenImage); // Setup zoom after image loads
       };
       fullscreenImage.src = imageUrl;
 

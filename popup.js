@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const increaseButton = document.getElementById("increaseButton");
     const decreaseButton = document.getElementById("decreaseButton");
     const showButtonsCheckbox = document.getElementById("showButtons");
+    let inputSaveTimer;
 
     // Load the current scroll timer value from storage
     chrome.storage.local.get(["scrollTimer", "showButtons"], (data) => {
@@ -22,6 +23,15 @@ document.addEventListener("DOMContentLoaded", () => {
           successMessage.style.display = "none";
         }, 2000);
       });
+    }
+
+    function saveFromInput() {
+      let currentValue = parseInt(scrollTimerInput.value, 10);
+      if (!Number.isFinite(currentValue) || currentValue < 1) {
+        currentValue = 1;
+      }
+      scrollTimerInput.value = currentValue;
+      saveScrollTimer(currentValue);
     }
 
     // Save the checkbox state to storage
@@ -49,4 +59,12 @@ document.addEventListener("DOMContentLoaded", () => {
         saveScrollTimer(currentValue);
       }
     });
+
+    // Save when the user types manually
+    scrollTimerInput.addEventListener("input", () => {
+      clearTimeout(inputSaveTimer);
+      inputSaveTimer = setTimeout(saveFromInput, 400);
+    });
+
+    scrollTimerInput.addEventListener("change", saveFromInput);
 });

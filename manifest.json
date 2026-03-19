@@ -24,7 +24,6 @@
       }
     ],
     "host_permissions": [
-      "https://www.instagram.com/*",
-      "http://*.cloudflare.com/*"
+      "https://www.instagram.com/*"
     ]
 }
