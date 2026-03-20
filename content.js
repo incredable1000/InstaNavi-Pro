@@ -889,6 +889,11 @@ function isEditableTarget(target) {
   );
 }
 
+function isReelsPath() {
+  const path = window.location.pathname || '';
+  return path.startsWith('/reel/') || path.startsWith('/reels/');
+}
+
 // Improved keyboard event handling with better performance
 const keyboardShortcuts = {
   'ArrowUp': (event) => {
@@ -954,6 +959,7 @@ const keyboardShortcuts = {
 // Add keyboard event listener with improved handling
 handleKeydown = async (event) => {
   if (isEditableTarget(event.target)) return;
+  if (isReelsPath()) return;
 
   if (event.key === 'Enter') {
     await handleEnterKey(event);
