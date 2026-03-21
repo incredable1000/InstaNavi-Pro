@@ -23,6 +23,7 @@
         "js": [
           "content.js",
           "reelsUtils.js",
+          "reelsEnterFullscreen.js",
           "reelsAutoScroll.js",
           "reelsSeekShortcuts.js",
           "reelsVolumeShortcuts.js",
